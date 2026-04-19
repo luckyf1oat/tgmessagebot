@@ -97,6 +97,14 @@ export class BotStore {
     ]);
   }
 
+  async clearUserThread(userId: number, threadId: number): Promise<void> {
+    await Promise.all([
+      this.kv.delete(this.userThreadKey(userId)),
+      this.kv.delete(this.threadUserKey(threadId)),
+      this.kv.delete(this.profileSentKey(userId))
+    ]);
+  }
+
   async isProfileSent(userId: number): Promise<boolean> {
     const v = await this.kv.get(this.profileSentKey(userId));
     return v === "1";

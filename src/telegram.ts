@@ -148,6 +148,13 @@ export class TelegramClient {
     });
   }
 
+  async deleteForumTopic(chatId: number, messageThreadId: number): Promise<void> {
+    await this.call("deleteForumTopic", {
+      chat_id: chatId,
+      message_thread_id: messageThreadId
+    });
+  }
+
   async getUserProfilePhotos(userId: number): Promise<UserProfilePhotosResult> {
     return await this.call<UserProfilePhotosResult>("getUserProfilePhotos", {
       user_id: userId,

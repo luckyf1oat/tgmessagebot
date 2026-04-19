@@ -47,6 +47,9 @@ function userCardButtons(userId: number) {
       [
         { text: "🚫 拉黑用户", callback_data: `block:${userId}` },
         { text: "✅ 取消拉黑", callback_data: `unblock:${userId}` }
+      ],
+      [
+        { text: "🗑️ 删除对话", callback_data: `delete_thread:${userId}` }
       ]
     ]
   };
@@ -167,7 +170,7 @@ async function handleCallbackQuery(
   const data = callbackQuery.data?.trim();
   if (!data) return;
 
-  const matched = /^(block|unblock):(\d+)$/.exec(data);
+  const matched = /^(block|unblock|delete_thread):(\d+)$/.exec(data);
   if (!matched) return;
 
   const action = matched[1];
@@ -189,6 +192,22 @@ async function handleCallbackQuery(
   const mappedUserId = await store.getUserIdByThread(threadId);
   if (!mappedUserId || mappedUserId !== targetUserId) {
     await tg.answerCallbackQuery(callbackQuery.id, "按钮与当前话题用户不匹配", true);
+    return;
+  }
+
+  if (action === "delete_thread") {
+    await store.clearUserThread(targetUserId, threadId);
+    await tg.answerCallbackQuery(callbackQuery.id, "已删除对话");
+    try {
+      await tg.deleteForumTopic(adminGroupId, threadId);
+    } catch (error) {
+      console.error("Delete forum topic failed:", { targetUserId, threadId, error });
+      await tg.sendMessage(
+        adminGroupId,
+        `⚠️ 已清理会话映射，但删除话题失败\n- 用户: tg://user?id=${targetUserId}\n- 你可手动删除该话题`,
+        threadId
+      );
+    }
     return;
   }
 
