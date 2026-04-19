@@ -10,6 +10,15 @@ function run(cmd) {
   return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
+function runSafe(cmd) {
+  try {
+    return { ok: true, output: run(cmd) };
+  } catch (error) {
+    const out = `${error?.stdout || ""}${error?.stderr || ""}`;
+    return { ok: false, output: out, error };
+  }
+}
+
 function getKvIdFromCreateOutput(output) {
   const fromJson = output.match(/"id"\s*:\s*"([^"]+)"/i)?.[1];
   if (fromJson) return fromJson;
@@ -21,23 +30,65 @@ function getKvIdFromCreateOutput(output) {
 }
 
 function ensureKvAndGetId() {
-  const listRaw = run("npx wrangler kv namespace list");
-  const lines = listRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-
-  for (const line of lines) {
-    if (!line.includes(kvTitle)) continue;
-    const id = line.match(/[a-f0-9]{32}/i)?.[0] || line.match(/[a-f0-9\-]{36}/i)?.[0];
-    if (id) {
-      console.log(`KV namespace exists: ${kvTitle} (${id})`);
-      return id;
+  const findIdByTitle = () => {
+    const listRaw = run("npx wrangler kv namespace list");
+    // 新版 Wrangler 直接返回 JSON；老版可能是文本
+    try {
+      const arr = JSON.parse(listRaw);
+      if (Array.isArray(arr)) {
+        const hit = arr.find((x) => x?.title === kvTitle && x?.id);
+        if (hit?.id) return hit.id;
+      }
+    } catch {
+      // ignore, fallback to text parsing below
     }
+
+    const lines = listRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    for (const line of lines) {
+      if (!line.includes(kvTitle)) continue;
+      const id = line.match(/[a-f0-9]{32}/i)?.[0] || line.match(/[a-f0-9\-]{36}/i)?.[0];
+      if (id) return id;
+    }
+
+    return null;
+  };
+
+  const existedId = findIdByTitle();
+  if (existedId) {
+    console.log(`KV namespace exists: ${kvTitle} (${existedId})`);
+    return existedId;
   }
 
   console.log(`KV namespace not found, creating: ${kvTitle}`);
-  const createRaw = run(`npx wrangler kv namespace create ${BINDING} --title \"${kvTitle}\"`);
-  const id = getKvIdFromCreateOutput(createRaw);
+  const helpRaw = run("npx wrangler kv namespace create --help");
+  const useLegacyTitle = /--title\b/.test(helpRaw);
+
+  const createCmd = useLegacyTitle
+    ? `npx wrangler kv namespace create ${BINDING} --title "${kvTitle}"`
+    : `npx wrangler kv namespace create "${kvTitle}" --binding ${BINDING}`;
+
+  const created = runSafe(createCmd);
+  if (!created.ok) {
+    const alreadyExists = /already exists/i.test(created.output);
+    if (alreadyExists) {
+      const existedAfterConflict = findIdByTitle();
+      if (existedAfterConflict) {
+        console.log(`KV namespace already exists, reuse: ${kvTitle} (${existedAfterConflict})`);
+        return existedAfterConflict;
+      }
+    }
+    throw new Error(`Failed to create KV namespace.\nCommand: ${createCmd}\n${created.output}`);
+  }
+
+  const fromList = findIdByTitle();
+  if (fromList) {
+    console.log(`KV namespace created: ${kvTitle} (${fromList})`);
+    return fromList;
+  }
+
+  const id = getKvIdFromCreateOutput(created.output);
   if (!id) {
-    throw new Error(`Failed to parse KV namespace id from output:\n${createRaw}`);
+    throw new Error(`Failed to parse KV namespace id from output:\n${created.output}`);
   }
   console.log(`KV namespace created: ${kvTitle} (${id})`);
   return id;

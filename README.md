@@ -79,6 +79,12 @@ npm run deploy:auto
 
 ## 4. 通过 Worker 地址一键设置 Webhook（推荐）
 
+部署后访问 Worker 根路径：
+
+`https://<你的worker域名>/`
+
+页面中有 **「一键设置 Webhook」** 按钮，点击后会自动调用设置接口。
+
 部署后，直接访问：
 
 `https://<你的worker域名>/setup/<WEBHOOK_SECRET>`

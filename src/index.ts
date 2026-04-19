@@ -127,16 +127,57 @@ function notFound() {
   return new Response("Not found", { status: 404 });
 }
 
+function html(body: string) {
+  return new Response(body, {
+    headers: { "content-type": "text/html; charset=utf-8" }
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url);
+      const setupPath = `/setup/${env.WEBHOOK_SECRET}`;
+
       if (request.method === "GET" && url.pathname === "/") {
-        return new Response("ok");
+        return html(`<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Webhook Setup</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; line-height: 1.5; }
+      button { padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; }
+      pre { white-space: pre-wrap; background: #f5f5f5; padding: 12px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Telegram Bot 配置页</h1>
+    <p>点击下方按钮即可一键设置 Webhook。</p>
+    <button id="setup">一键设置 Webhook</button>
+    <pre id="result">尚未执行</pre>
+    <script>
+      const btn = document.getElementById("setup");
+      const result = document.getElementById("result");
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        result.textContent = "正在设置，请稍候...";
+        try {
+          const resp = await fetch(${JSON.stringify(setupPath)}, { method: "POST" });
+          result.textContent = await resp.text();
+        } catch (e) {
+          result.textContent = "设置失败：" + (e?.message || String(e));
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>`);
       }
 
-      const setupPath = `/setup/${env.WEBHOOK_SECRET}`;
-      if (request.method === "GET" && url.pathname === setupPath) {
+      if ((request.method === "GET" || request.method === "POST") && url.pathname === setupPath) {
         const tg = new TelegramClient(env.BOT_TOKEN);
         const hookUrl = `${url.origin}/hook/${env.WEBHOOK_SECRET}`;
         const result = await tg.call<unknown>("setWebhook", {

@@ -5,4 +5,4 @@ compatibility_date = "2025-04-01"
 # 在 Cloudflare Dashboard 先创建 KV，然后填入真实 id
 [[kv_namespaces]]
 binding = "BOT_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "3b34943b47c84d46af3d399aa6c7fafa"
