@@ -28,6 +28,9 @@ export interface TelegramMessage {
   chat: TelegramChat;
   date: number;
   text?: string;
+  sticker?: {
+    file_id: string;
+  };
   reply_to_message?: TelegramMessage;
 }
 
@@ -82,6 +85,14 @@ export class TelegramClient {
       chat_id: chatId,
       photo,
       ...(caption ? { caption } : {}),
+      ...(messageThreadId ? { message_thread_id: messageThreadId } : {})
+    });
+  }
+
+  async sendSticker(chatId: number, stickerFileId: string, messageThreadId?: number): Promise<void> {
+    await this.call("sendSticker", {
+      chat_id: chatId,
+      sticker: stickerFileId,
       ...(messageThreadId ? { message_thread_id: messageThreadId } : {})
     });
   }

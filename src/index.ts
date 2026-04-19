@@ -22,6 +22,23 @@ function userCardText(user: TelegramUser) {
   return `👤 用户名片\n- 昵称: ${nick}\n- 用户名: ${uname}\n- 用户链接: tg://user?id=${user.id}`;
 }
 
+async function relayMessageWithStickerFallback(
+  tg: TelegramClient,
+  toChatId: number,
+  fromChatId: number,
+  message: TelegramMessage,
+  messageThreadId?: number
+) {
+  try {
+    await tg.copyMessage(toChatId, fromChatId, message.message_id, messageThreadId);
+    return;
+  } catch (copyErr) {
+    if (!message.sticker?.file_id) throw copyErr;
+    // 某些贴纸在 copyMessage 路径可能失败，贴纸场景降级为 sendSticker
+    await tg.sendSticker(toChatId, message.sticker.file_id, messageThreadId);
+  }
+}
+
 async function ensureThreadForUser(
   tg: TelegramClient,
   store: BotStore,
@@ -102,7 +119,7 @@ async function handlePrivateMessage(
   }
 
   const threadId = await ensureThreadForUser(tg, store, adminGroupId, user);
-  await tg.copyMessage(adminGroupId, message.chat.id, message.message_id, threadId);
+  await relayMessageWithStickerFallback(tg, adminGroupId, message.chat.id, message, threadId);
 }
 
 async function handleAdminGroupMessage(
@@ -120,7 +137,16 @@ async function handleAdminGroupMessage(
   const userId = await store.getUserIdByThread(threadId);
   if (!userId) return;
 
-  await tg.copyMessage(userId, adminGroupId, message.message_id);
+  try {
+    await relayMessageWithStickerFallback(tg, userId, adminGroupId, message);
+  } catch (error) {
+    console.error("Admin -> User relay failed:", { userId, threadId, error });
+    await tg.sendMessage(
+      adminGroupId,
+      `⚠️ 回传失败\n- 用户: tg://user?id=${userId}\n- 可能原因: 用户拉黑机器人 / 从未与机器人开始会话 / 账号状态异常`,
+      threadId
+    );
+  }
 }
 
 function notFound() {
@@ -209,10 +235,15 @@ export default {
       const tg = new TelegramClient(env.BOT_TOKEN);
       const store = new BotStore(env.BOT_KV);
 
-      if (message.chat.type === "private") {
-        await handlePrivateMessage(tg, store, adminGroupId, message);
-      } else if (message.chat.type === "supergroup") {
-        await handleAdminGroupMessage(tg, store, adminGroupId, message);
+      try {
+        if (message.chat.type === "private") {
+          await handlePrivateMessage(tg, store, adminGroupId, message);
+        } else if (message.chat.type === "supergroup") {
+          await handleAdminGroupMessage(tg, store, adminGroupId, message);
+        }
+      } catch (handlerError) {
+        // 这里必须返回 200，避免 Telegram 持续重试同一条失败 update，导致后续消息“卡住”
+        console.error("Handle update failed but acknowledged:", handlerError);
       }
 
       return new Response("ok");
