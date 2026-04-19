@@ -21,12 +21,16 @@ function getKvIdFromCreateOutput(output) {
 }
 
 function ensureKvAndGetId() {
-  const listRaw = run("npx wrangler kv namespace list --json");
-  const list = JSON.parse(listRaw);
-  const found = list.find((item) => item?.title === kvTitle);
-  if (found?.id) {
-    console.log(`KV namespace exists: ${kvTitle} (${found.id})`);
-    return found.id;
+  const listRaw = run("npx wrangler kv namespace list");
+  const lines = listRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    if (!line.includes(kvTitle)) continue;
+    const id = line.match(/[a-f0-9]{32}/i)?.[0] || line.match(/[a-f0-9\-]{36}/i)?.[0];
+    if (id) {
+      console.log(`KV namespace exists: ${kvTitle} (${id})`);
+      return id;
+    }
   }
 
   console.log(`KV namespace not found, creating: ${kvTitle}`);

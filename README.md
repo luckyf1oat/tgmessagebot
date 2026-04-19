@@ -77,13 +77,17 @@ npm run deploy:auto
 
 ---
 
-## 4. 设置 Telegram Webhook
+## 4. 通过 Worker 地址一键设置 Webhook（推荐）
 
-部署后，把 webhook 指到：
+部署后，直接访问：
+
+`https://<你的worker域名>/setup/<WEBHOOK_SECRET>`
+
+Worker 会自动调用 Telegram `setWebhook`，并把 webhook 设置为：
 
 `https://<你的worker域名>/hook/<WEBHOOK_SECRET>`
 
-示例：
+你也可以手动调用旧方式（可选）：
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<你的BOT_TOKEN>/setWebhook" \
@@ -107,11 +111,6 @@ curl -X POST "https://api.telegram.org/bot<你的BOT_TOKEN>/setWebhook" \
 - `BOT_TOKEN`
 - `ADMIN_GROUP_ID`
 - `WEBHOOK_SECRET`
-- `WORKER_URL`（例如 `https://xxx.workers.dev`）
-
-可选：
-
-- `AUTO_SET_WEBHOOK`：默认空/true；若设为 `false` 则跳过自动 setWebhook
 
 ### 5.2 一键部署方式
 
@@ -124,7 +123,7 @@ curl -X POST "https://api.telegram.org/bot<你的BOT_TOKEN>/setWebhook" \
 1. 安装依赖
 2. 自动创建/复用 KV，并自动绑定到 `wrangler.toml`
 3. `wrangler deploy`
-4. 自动调用 Telegram `setWebhook`（除非你设置 `AUTO_SET_WEBHOOK=false`）
+4. 部署完成后你只需访问一次 `/setup/<WEBHOOK_SECRET>` 即可完成 webhook 绑定
 
 ---
 

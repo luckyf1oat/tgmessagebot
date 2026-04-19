@@ -135,6 +135,20 @@ export default {
         return new Response("ok");
       }
 
+      const setupPath = `/setup/${env.WEBHOOK_SECRET}`;
+      if (request.method === "GET" && url.pathname === setupPath) {
+        const tg = new TelegramClient(env.BOT_TOKEN);
+        const hookUrl = `${url.origin}/hook/${env.WEBHOOK_SECRET}`;
+        const result = await tg.call<unknown>("setWebhook", {
+          url: hookUrl,
+          drop_pending_updates: true,
+          allowed_updates: ["message"]
+        });
+        return new Response(JSON.stringify({ ok: true, hookUrl, result }, null, 2), {
+          headers: { "content-type": "application/json; charset=utf-8" }
+        });
+      }
+
       const hookPath = `/hook/${env.WEBHOOK_SECRET}`;
       if (request.method !== "POST" || url.pathname !== hookPath) {
         return notFound();
