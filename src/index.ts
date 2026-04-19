@@ -19,7 +19,7 @@ function topicNameFor(user: TelegramUser) {
 function userCardText(user: TelegramUser) {
   const nick = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || "未设置";
   const uname = user.username ? `@${user.username}` : "未设置";
-  return `👤 用户名片\n- 昵称: ${nick}\n- 用户名: ${uname}\n- UserID: ${user.id}`;
+  return `👤 用户名片\n- 昵称: ${nick}\n- 用户名: ${uname}\n- 用户链接: tg://user?id=${user.id}`;
 }
 
 async function ensureThreadForUser(
