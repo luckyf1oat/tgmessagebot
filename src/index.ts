@@ -1,0 +1,169 @@
+import { BotStore, createCaptcha, parseAnswer } from "./captcha";
+import { TelegramClient, TelegramMessage, TelegramUpdate, TelegramUser } from "./telegram";
+
+interface Env {
+  BOT_KV: KVNamespace;
+  BOT_TOKEN: string;
+  ADMIN_GROUP_ID: string;
+  WEBHOOK_SECRET: string;
+}
+
+const CAPTCHA_TTL_SECONDS = 5 * 60;
+
+function topicNameFor(user: TelegramUser) {
+  const nick = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  const uname = user.username ? `@${user.username}` : "no_username";
+  return `${nick || "Unknown"} (${uname}) #${user.id}`.slice(0, 120);
+}
+
+function userCardText(user: TelegramUser) {
+  const nick = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || "未设置";
+  const uname = user.username ? `@${user.username}` : "未设置";
+  return `👤 用户名片\n- 昵称: ${nick}\n- 用户名: ${uname}\n- UserID: ${user.id}`;
+}
+
+async function ensureThreadForUser(
+  tg: TelegramClient,
+  store: BotStore,
+  adminGroupId: number,
+  user: TelegramUser
+): Promise<number> {
+  let threadId = await store.getThreadIdByUser(user.id);
+  if (threadId) return threadId;
+
+  const topic = await tg.createForumTopic(adminGroupId, topicNameFor(user));
+  threadId = topic.message_thread_id;
+  await store.bindUserThread(user.id, threadId);
+
+  const profileSent = await store.isProfileSent(user.id);
+  if (!profileSent) {
+    const photos = await tg.getUserProfilePhotos(user.id);
+    const fileId = photos.photos?.[0]?.[0]?.file_id;
+    if (fileId) {
+      await tg.sendPhoto(adminGroupId, fileId, userCardText(user), threadId);
+    } else {
+      await tg.sendMessage(adminGroupId, userCardText(user), threadId);
+    }
+    await store.markProfileSent(user.id);
+  }
+
+  return threadId;
+}
+
+async function askCaptcha(tg: TelegramClient, store: BotStore, userId: number) {
+  const challenge = createCaptcha();
+  await store.saveCaptcha(userId, challenge.answer, CAPTCHA_TTL_SECONDS);
+  await tg.sendMessage(userId, `请先完成验证：${challenge.a} + ${challenge.b} = ?\n直接回复数字即可。`);
+}
+
+async function handlePrivateMessage(
+  tg: TelegramClient,
+  store: BotStore,
+  adminGroupId: number,
+  message: TelegramMessage
+) {
+  const user = message.from;
+  if (!user) return;
+
+  const text = message.text?.trim();
+  if (text === "/start") {
+    if (await store.isVerified(user.id)) {
+      await tg.sendMessage(user.id, "欢迎回来，直接发送消息即可联系管理员。支持文本/图片/文件/语音等。")
+      return;
+    }
+    await askCaptcha(tg, store, user.id);
+    return;
+  }
+
+  const verified = await store.isVerified(user.id);
+  if (!verified) {
+    const captcha = await store.getCaptcha(user.id);
+    if (!captcha || captcha.expiresAt < Date.now()) {
+      await askCaptcha(tg, store, user.id);
+      return;
+    }
+
+    const answer = parseAnswer(message.text);
+    if (answer === null) {
+      await tg.sendMessage(user.id, "请回复数字答案，例如 8。")
+      return;
+    }
+
+    if (answer !== captcha.answer) {
+      await tg.sendMessage(user.id, "答案不正确，重新来一题。")
+      await askCaptcha(tg, store, user.id);
+      return;
+    }
+
+    await store.setVerified(user.id);
+    await store.clearCaptcha(user.id);
+    await tg.sendMessage(user.id, "✅ 验证通过！现在可以开始发送消息。")
+    return;
+  }
+
+  const threadId = await ensureThreadForUser(tg, store, adminGroupId, user);
+  await tg.copyMessage(adminGroupId, message.chat.id, message.message_id, threadId);
+}
+
+async function handleAdminGroupMessage(
+  tg: TelegramClient,
+  store: BotStore,
+  adminGroupId: number,
+  message: TelegramMessage
+) {
+  if (message.chat.id !== adminGroupId) return;
+  if (message.from?.is_bot) return;
+
+  const threadId = message.message_thread_id;
+  if (!threadId) return;
+
+  const userId = await store.getUserIdByThread(threadId);
+  if (!userId) return;
+
+  await tg.copyMessage(userId, adminGroupId, message.message_id);
+}
+
+function notFound() {
+  return new Response("Not found", { status: 404 });
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/") {
+        return new Response("ok");
+      }
+
+      const hookPath = `/hook/${env.WEBHOOK_SECRET}`;
+      if (request.method !== "POST" || url.pathname !== hookPath) {
+        return notFound();
+      }
+
+      const update = (await request.json()) as TelegramUpdate;
+      const message = update.message;
+      if (!message) {
+        return new Response("ignored");
+      }
+
+      const adminGroupId = Number(env.ADMIN_GROUP_ID);
+      if (!Number.isFinite(adminGroupId)) {
+        throw new Error("ADMIN_GROUP_ID is invalid");
+      }
+
+      const tg = new TelegramClient(env.BOT_TOKEN);
+      const store = new BotStore(env.BOT_KV);
+
+      if (message.chat.type === "private") {
+        await handlePrivateMessage(tg, store, adminGroupId, message);
+      } else if (message.chat.type === "supergroup") {
+        await handleAdminGroupMessage(tg, store, adminGroupId, message);
+      }
+
+      return new Response("ok");
+    } catch (err) {
+      console.error("Webhook error:", err);
+      return new Response("internal error", { status: 500 });
+    }
+  }
+};

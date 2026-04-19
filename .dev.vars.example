@@ -1,0 +1,3 @@
+BOT_TOKEN=123456:replace_me
+ADMIN_GROUP_ID=-1001234567890
+WEBHOOK_SECRET=replace_with_long_random_string

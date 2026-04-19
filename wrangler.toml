@@ -1,0 +1,8 @@
+name = "tg-worker-support-bot"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+# 在 Cloudflare Dashboard 先创建 KV，然后填入真实 id
+[[kv_namespaces]]
+binding = "BOT_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
