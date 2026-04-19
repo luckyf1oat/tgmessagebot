@@ -1,48 +1,36 @@
 # Telegram 双向客服中继 Bot（Cloudflare Worker）
 
-本项目实现了：
+一个可直接部署到 Cloudflare Workers 的 Telegram 客服中继机器人：
 
-- ✅ 私聊用户 <-> 管理员群 的双向消息中继
-- ✅ 管理员群使用 **Topics 话题模式**，每个用户一个独立话题
-- ✅ 支持文本、图片、语音、视频、文件等（`copyMessage` 媒体透传）
-- ✅ 简单人机验证（算术题）
-- ✅ 用户头像/名片展示（首次建话题时发送）
-- ✅ GitHub Actions 一键部署到 Cloudflare Workers
+- 用户私聊机器人 ↔ 管理员群话题（Topic）双向转发
+- 每个用户自动创建独立话题，便于客服分流
+- 支持文本/图片/语音/视频/文件（`copyMessage` 透传）
+- 内置简单人机验证（算术题）
+- 自动创建并绑定 KV（部署时一键完成）
+- 提供网页按钮，一键设置 Webhook
 
 ---
 
-## 1. 准备工作
+## 1. 快速开始
+
+### 1.1 准备 Telegram / Cloudflare
 
 1. 在 BotFather 创建机器人，拿到 `BOT_TOKEN`
-2. 准备一个管理员**超级群**，并开启 **Topics（话题）**
-3. 把 bot 拉进管理员群，并授予发消息权限
+2. 准备一个管理员超级群，并开启 **Topics**
+3. 将机器人拉入管理员群，赋予发消息权限
 4. 记录管理员群 `chat_id`（通常形如 `-100xxxxxxxxxx`）
-5. Cloudflare 创建 KV Namespace，并拿到 namespace id
 
----
+> KV 不需要你手动先建，项目会在部署时自动创建（可复用已有同名 KV）。
 
-## 2. 配置 `wrangler.toml`
-
-编辑 `wrangler.toml`：
-
-- `name`：你的 worker 名称
-- `[[kv_namespaces]].id`：可先保留占位值，部署前会自动写入真实 id
-
-> 注意：`BOT_TOKEN`、`ADMIN_GROUP_ID`、`WEBHOOK_SECRET` 推荐通过 `.dev.vars`（本地）或 GitHub Secrets（CI）注入，不要硬编码进仓库。
-
----
-
-## 3. 本地开发与手动部署
-
-### 3.1 安装依赖
+### 1.2 安装依赖
 
 ```bash
 npm install
 ```
 
-### 3.2 本地环境变量
+### 1.3 本地变量（开发用）
 
-复制 `.dev.vars.example` 为 `.dev.vars`，并填真实值：
+复制 `.dev.vars.example` 为 `.dev.vars`：
 
 ```env
 BOT_TOKEN=xxx
@@ -50,67 +38,54 @@ ADMIN_GROUP_ID=-100xxxxxxxxxx
 WEBHOOK_SECRET=your_random_secret
 ```
 
-### 3.3 本地调试
-
-```bash
-npm run dev
-```
-
-### 3.4 部署
-
-```bash
-npm run deploy
-```
-
-### 3.5 自动创建并绑定 KV 后部署（推荐）
+### 1.4 一键部署（推荐）
 
 ```bash
 npm run deploy:auto
 ```
 
-这条命令会先执行：
+该命令会自动执行：
 
-1. 自动检查是否存在 KV Namespace（默认名：`tg-worker-support-bot-kv`）
+1. 检查 KV Namespace 是否存在
 2. 不存在则自动创建
-3. 自动把 namespace id 回填到 `wrangler.toml` 的 `BOT_KV`
-4. 再执行 `wrangler deploy`
+3. 自动回填 `wrangler.toml` 中 `BOT_KV` 的 id
+4. 执行 `wrangler deploy`
 
 ---
 
-## 4. 通过 Worker 地址一键设置 Webhook（推荐）
+## 2. 一键设置 Webhook
 
-部署后访问 Worker 根路径：
+部署完成后，访问你的 Worker：
 
 `https://<你的worker域名>/`
 
-页面中有 **「一键设置 Webhook」** 按钮，点击后会自动调用设置接口。
+打开页面后点击 **「一键设置 Webhook」** 按钮即可。
 
-部署后，直接访问：
-
-`https://<你的worker域名>/setup/<WEBHOOK_SECRET>`
-
-Worker 会自动调用 Telegram `setWebhook`，并把 webhook 设置为：
+系统会自动把 webhook 设置为：
 
 `https://<你的worker域名>/hook/<WEBHOOK_SECRET>`
 
-你也可以手动调用旧方式（可选）：
+你也可以直接调用接口：
 
-```bash
-curl -X POST "https://api.telegram.org/bot<你的BOT_TOKEN>/setWebhook" \
-  -d "url=https://<你的worker域名>/hook/<WEBHOOK_SECRET>" \
-  -d "drop_pending_updates=true"
-```
+- `GET /setup/<WEBHOOK_SECRET>`
+- 或 `POST /setup/<WEBHOOK_SECRET>`
+
+示例：
+
+`https://<你的worker域名>/setup/<WEBHOOK_SECRET>`
 
 ---
 
-## 5. GitHub Actions 一键部署
+## 3. GitHub Actions 自动部署
 
 工作流文件：`.github/workflows/deploy.yml`
 
-- 支持 `workflow_dispatch`（手动点击 Run workflow）
-- 支持 push 到 `main` 自动部署
+支持：
 
-### 5.1 需要配置的 GitHub Secrets
+- `workflow_dispatch`（手动触发）
+- push 到 `main` 自动触发
+
+### 需要的 Secrets
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
@@ -118,31 +93,31 @@ curl -X POST "https://api.telegram.org/bot<你的BOT_TOKEN>/setWebhook" \
 - `ADMIN_GROUP_ID`
 - `WEBHOOK_SECRET`
 
-### 5.2 一键部署方式
-
-在 GitHub 仓库页面：
-
-`Actions -> Deploy Worker -> Run workflow`
-
-执行后会：
+执行流程：
 
 1. 安装依赖
-2. 自动创建/复用 KV，并自动绑定到 `wrangler.toml`
-3. `wrangler deploy`
-4. 部署完成后你只需访问一次 `/setup/<WEBHOOK_SECRET>` 即可完成 webhook 绑定
+2. 自动创建/复用 KV 并绑定
+3. 部署 Worker
+4. 访问 Worker 根路径点击按钮完成 webhook
 
 ---
 
-## 8. KV 自动创建绑定的可选自定义
+## 4. KV 自动创建绑定说明
 
-自动脚本：`scripts/prepare-kv.mjs`
+脚本文件：`scripts/prepare-kv.mjs`
 
-可通过环境变量自定义：
+默认行为：
 
-- `WORKER_NAME`（默认 `tg-worker-support-bot`）
-- `KV_NAMESPACE_TITLE`（默认 `${WORKER_NAME}-kv`）
+- Worker 名：`tg-worker-support-bot`
+- KV 名：`${WORKER_NAME}-kv`
+- 绑定名：`BOT_KV`
 
-示例：
+可选自定义环境变量：
+
+- `WORKER_NAME`
+- `KV_NAMESPACE_TITLE`
+
+Windows 示例：
 
 ```bash
 set WORKER_NAME=my-bot&& set KV_NAMESPACE_TITLE=my-bot-kv&& npm run prepare:kv
@@ -150,28 +125,28 @@ set WORKER_NAME=my-bot&& set KV_NAMESPACE_TITLE=my-bot-kv&& npm run prepare:kv
 
 ---
 
-## 6. 消息流说明
+## 5. 消息流
 
-1. 用户私聊 bot，首次需通过算术验证
-2. 通过后，首次消息会在管理员群创建专属话题
-3. bot 在该话题发送用户头像名片（若有头像）
-4. 用户后续消息透传到该话题
-5. 管理员在该话题发送任意消息，bot 自动回传给对应用户
+1. 用户私聊机器人，首次需通过算术验证
+2. 验证通过后，系统在管理员群创建该用户专属话题
+3. 首次创建话题时发送用户名片（含头像，若存在）
+4. 用户后续消息自动转发到该话题
+5. 管理员在该话题回复，消息自动回传给对应用户
 
 ---
 
-## 7. 常见问题
+## 6. 常见问题
 
-### Q1: 为什么没创建话题？
+### Q1：未自动创建话题？
 
-- 管理员群必须是超级群，并已开启 Topics
-- bot 需要在群中有足够权限
+- 管理员群必须是超级群并开启 Topics
+- 机器人在群内需要足够权限
 
-### Q2: 为什么没收到用户头像？
+### Q2：看不到用户头像名片？
 
-- 用户可能未设置头像
-- Telegram 接口返回空时会降级发送纯文本名片
+- 用户可能没有头像
+- Telegram 返回空时会自动降级为纯文本名片
 
-### Q3: 如何重置用户验证状态？
+### Q3：如何重置某个用户验证状态？
 
-- 删除 KV 里的 `verified:<userId>` 键即可
+- 删除 KV 键 `verified:<userId>` 即可
