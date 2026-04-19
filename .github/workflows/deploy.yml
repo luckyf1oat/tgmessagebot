@@ -23,6 +23,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Ensure KV namespace and bind it
+        run: npm run prepare:kv
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: tg-worker-support-bot
+          KV_NAMESPACE_TITLE: tg-worker-support-bot-kv
+
       - name: Deploy to Cloudflare Workers
         run: >
           npx wrangler deploy

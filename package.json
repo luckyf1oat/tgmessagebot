@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "prepare:kv": "node scripts/prepare-kv.mjs",
     "deploy": "wrangler deploy",
+    "deploy:auto": "npm run prepare:kv && wrangler deploy",
     "check": "tsc --noEmit"
   },
   "devDependencies": {

@@ -26,7 +26,7 @@
 编辑 `wrangler.toml`：
 
 - `name`：你的 worker 名称
-- `[[kv_namespaces]].id`：替换为真实 KV namespace id
+- `[[kv_namespaces]].id`：可先保留占位值，部署前会自动写入真实 id
 
 > 注意：`BOT_TOKEN`、`ADMIN_GROUP_ID`、`WEBHOOK_SECRET` 推荐通过 `.dev.vars`（本地）或 GitHub Secrets（CI）注入，不要硬编码进仓库。
 
@@ -61,6 +61,19 @@ npm run dev
 ```bash
 npm run deploy
 ```
+
+### 3.5 自动创建并绑定 KV 后部署（推荐）
+
+```bash
+npm run deploy:auto
+```
+
+这条命令会先执行：
+
+1. 自动检查是否存在 KV Namespace（默认名：`tg-worker-support-bot-kv`）
+2. 不存在则自动创建
+3. 自动把 namespace id 回填到 `wrangler.toml` 的 `BOT_KV`
+4. 再执行 `wrangler deploy`
 
 ---
 
@@ -109,8 +122,26 @@ curl -X POST "https://api.telegram.org/bot<你的BOT_TOKEN>/setWebhook" \
 执行后会：
 
 1. 安装依赖
-2. `wrangler deploy`
-3. 自动调用 Telegram `setWebhook`（除非你设置 `AUTO_SET_WEBHOOK=false`）
+2. 自动创建/复用 KV，并自动绑定到 `wrangler.toml`
+3. `wrangler deploy`
+4. 自动调用 Telegram `setWebhook`（除非你设置 `AUTO_SET_WEBHOOK=false`）
+
+---
+
+## 8. KV 自动创建绑定的可选自定义
+
+自动脚本：`scripts/prepare-kv.mjs`
+
+可通过环境变量自定义：
+
+- `WORKER_NAME`（默认 `tg-worker-support-bot`）
+- `KV_NAMESPACE_TITLE`（默认 `${WORKER_NAME}-kv`）
+
+示例：
+
+```bash
+set WORKER_NAME=my-bot&& set KV_NAMESPACE_TITLE=my-bot-kv&& npm run prepare:kv
+```
 
 ---
 
