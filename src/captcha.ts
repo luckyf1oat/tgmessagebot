@@ -14,6 +14,7 @@ const CAPTCHA_PREFIX = "captcha:";
 const USER_THREAD_PREFIX = "user_thread:";
 const THREAD_USER_PREFIX = "thread_user:";
 const PROFILE_SENT_PREFIX = "profile_sent:";
+const BLOCKED_PREFIX = "blocked:";
 
 export class BotStore {
   constructor(private kv: KVNamespace) {}
@@ -36,6 +37,10 @@ export class BotStore {
 
   profileSentKey(userId: number) {
     return `${PROFILE_SENT_PREFIX}${userId}`;
+  }
+
+  blockedKey(userId: number) {
+    return `${BLOCKED_PREFIX}${userId}`;
   }
 
   async isVerified(userId: number): Promise<boolean> {
@@ -99,6 +104,19 @@ export class BotStore {
 
   async markProfileSent(userId: number): Promise<void> {
     await this.kv.put(this.profileSentKey(userId), "1");
+  }
+
+  async isBlocked(userId: number): Promise<boolean> {
+    const v = await this.kv.get(this.blockedKey(userId));
+    return v === "1";
+  }
+
+  async setBlocked(userId: number, blocked: boolean): Promise<void> {
+    if (blocked) {
+      await this.kv.put(this.blockedKey(userId), "1");
+      return;
+    }
+    await this.kv.delete(this.blockedKey(userId));
   }
 }
 

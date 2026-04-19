@@ -53,7 +53,8 @@
 
 - `BOT_TOKEN`：Telegram 机器人令牌
 - `ADMIN_GROUP_ID`：管理员超级群 ID（`-100...`）
-- `WEBHOOK_SECRET`：Webhook 路径密钥（用于防止被随意扫描）
+- `WEBHOOK_SECRET`（可选）：Webhook 路径密钥（用于防止被随意扫描）
+  - 不填写时，Worker 会自动生成随机字符串并持久化到 KV：`config:webhook_secret`
 
 开发环境在 `.dev.vars` 配置，生产建议用 CI Secrets 注入。
 
@@ -136,7 +137,8 @@ npm install
 ```env
 BOT_TOKEN=xxx
 ADMIN_GROUP_ID=-100xxxxxxxxxx
-WEBHOOK_SECRET=your_random_secret
+# 可选，不填则自动生成并保存到 KV
+# WEBHOOK_SECRET=your_random_secret
 ```
 
 ### 2.4 一键部署（推荐）
@@ -192,7 +194,8 @@ npm run deploy:auto
 - `CLOUDFLARE_ACCOUNT_ID`
 - `BOT_TOKEN`
 - `ADMIN_GROUP_ID`
-- `WEBHOOK_SECRET`
+
+> `WEBHOOK_SECRET` 不再是必填 Secret（可选传入）。
 
 执行流程：
 
@@ -230,7 +233,7 @@ set WORKER_NAME=my-bot&& set KV_NAMESPACE_TITLE=my-bot-kv&& npm run prepare:kv
 
 1. 用户私聊机器人，首次需通过算术验证
 2. 验证通过后，系统在管理员群创建该用户专属话题
-3. 首次创建话题时发送用户名片（含头像，若存在）
+3. 首次创建话题时发送用户名片（含头像，若存在），并附带「拉黑用户 / 取消拉黑」按钮
 4. 用户后续消息自动转发到该话题
 5. 管理员在该话题回复，消息自动回传给对应用户
 

@@ -38,6 +38,23 @@ export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
+}
+
+export interface InlineKeyboardButton {
+  text: string;
+  callback_data: string;
+}
+
+export interface InlineKeyboardMarkup {
+  inline_keyboard: InlineKeyboardButton[][];
+}
+
+export interface TelegramCallbackQuery {
+  id: string;
+  from: TelegramUser;
+  message?: TelegramMessage;
+  data?: string;
 }
 
 export interface CreateForumTopicResult {
@@ -72,20 +89,33 @@ export class TelegramClient {
     return json.result;
   }
 
-  async sendMessage(chatId: number, text: string, messageThreadId?: number): Promise<void> {
+  async sendMessage(
+    chatId: number,
+    text: string,
+    messageThreadId?: number,
+    replyMarkup?: InlineKeyboardMarkup
+  ): Promise<void> {
     await this.call("sendMessage", {
       chat_id: chatId,
       text,
-      ...(messageThreadId ? { message_thread_id: messageThreadId } : {})
+      ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {})
     });
   }
 
-  async sendPhoto(chatId: number, photo: string, caption?: string, messageThreadId?: number): Promise<void> {
+  async sendPhoto(
+    chatId: number,
+    photo: string,
+    caption?: string,
+    messageThreadId?: number,
+    replyMarkup?: InlineKeyboardMarkup
+  ): Promise<void> {
     await this.call("sendPhoto", {
       chat_id: chatId,
       photo,
       ...(caption ? { caption } : {}),
-      ...(messageThreadId ? { message_thread_id: messageThreadId } : {})
+      ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {})
     });
   }
 
@@ -122,6 +152,14 @@ export class TelegramClient {
     return await this.call<UserProfilePhotosResult>("getUserProfilePhotos", {
       user_id: userId,
       limit: 1
+    });
+  }
+
+  async answerCallbackQuery(callbackQueryId: string, text: string, showAlert = false): Promise<void> {
+    await this.call("answerCallbackQuery", {
+      callback_query_id: callbackQueryId,
+      text,
+      show_alert: showAlert
     });
   }
 }

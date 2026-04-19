@@ -34,7 +34,6 @@ jobs:
           npx wrangler deploy
           --var BOT_TOKEN:${{ secrets.BOT_TOKEN }}
           --var ADMIN_GROUP_ID:${{ secrets.ADMIN_GROUP_ID }}
-          --var WEBHOOK_SECRET:${{ secrets.WEBHOOK_SECRET }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
