@@ -1,5 +1,7 @@
 # Telegram 双向客服中继 Bot（Cloudflare Worker）
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/luckyf1oat/tgmessagebot)
+
 一个可直接部署到 Cloudflare Workers 的 Telegram 客服中继机器人：
 
 - 用户私聊机器人 ↔ 管理员群话题（Topic）双向转发
