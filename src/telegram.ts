@@ -28,10 +28,15 @@ export interface TelegramMessage {
   chat: TelegramChat;
   date: number;
   text?: string;
+  caption?: string;
   sticker?: {
     file_id: string;
   };
   reply_to_message?: TelegramMessage;
+}
+
+export interface TelegramMessageId {
+  message_id: number;
 }
 
 export interface TelegramUpdate {
@@ -132,12 +137,28 @@ export class TelegramClient {
     fromChatId: number,
     messageId: number,
     messageThreadId?: number
-  ): Promise<void> {
-    await this.call("copyMessage", {
+  ): Promise<TelegramMessageId> {
+    return await this.call<TelegramMessageId>("copyMessage", {
       chat_id: toChatId,
       from_chat_id: fromChatId,
       message_id: messageId,
       ...(messageThreadId ? { message_thread_id: messageThreadId } : {})
+    });
+  }
+
+  async editMessageText(chatId: number, messageId: number, text: string): Promise<void> {
+    await this.call("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text
+    });
+  }
+
+  async editMessageCaption(chatId: number, messageId: number, caption: string): Promise<void> {
+    await this.call("editMessageCaption", {
+      chat_id: chatId,
+      message_id: messageId,
+      caption
     });
   }
 

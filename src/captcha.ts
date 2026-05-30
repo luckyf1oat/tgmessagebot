@@ -15,6 +15,12 @@ const USER_THREAD_PREFIX = "user_thread:";
 const THREAD_USER_PREFIX = "thread_user:";
 const PROFILE_SENT_PREFIX = "profile_sent:";
 const BLOCKED_PREFIX = "blocked:";
+const MESSAGE_LINK_PREFIX = "message_link:";
+
+export interface MessageLink {
+  chatId: number;
+  messageId: number;
+}
 
 export class BotStore {
   constructor(private kv: KVNamespace) {}
@@ -41,6 +47,10 @@ export class BotStore {
 
   blockedKey(userId: number) {
     return `${BLOCKED_PREFIX}${userId}`;
+  }
+
+  messageLinkKey(chatId: number, messageId: number) {
+    return `${MESSAGE_LINK_PREFIX}${chatId}:${messageId}`;
   }
 
   async isVerified(userId: number): Promise<boolean> {
@@ -125,6 +135,25 @@ export class BotStore {
       return;
     }
     await this.kv.delete(this.blockedKey(userId));
+  }
+
+  async bindMessageLink(from: MessageLink, to: MessageLink): Promise<void> {
+    await Promise.all([
+      this.kv.put(this.messageLinkKey(from.chatId, from.messageId), JSON.stringify(to)),
+      this.kv.put(this.messageLinkKey(to.chatId, to.messageId), JSON.stringify(from))
+    ]);
+  }
+
+  async getLinkedMessage(chatId: number, messageId: number): Promise<MessageLink | null> {
+    const raw = await this.kv.get(this.messageLinkKey(chatId, messageId));
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as MessageLink;
+      if (Number.isFinite(parsed.chatId) && Number.isFinite(parsed.messageId)) return parsed;
+      return null;
+    } catch {
+      return null;
+    }
   }
 }
 
