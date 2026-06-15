@@ -73,6 +73,18 @@ export interface UserProfilePhotosResult {
   photos: Array<Array<{ file_id: string }>>;
 }
 
+export interface WebhookInfoResult {
+  url: string;
+  has_custom_certificate: boolean;
+  pending_update_count: number;
+  ip_address?: string;
+  last_error_date?: number;
+  last_error_message?: string;
+  last_synchronization_error_date?: number;
+  max_connections?: number;
+  allowed_updates?: string[];
+}
+
 export class TelegramClient {
   constructor(private token: string) {}
 
@@ -189,5 +201,9 @@ export class TelegramClient {
       text,
       show_alert: showAlert
     });
+  }
+
+  async getWebhookInfo(): Promise<WebhookInfoResult> {
+    return await this.call<WebhookInfoResult>("getWebhookInfo", {});
   }
 }

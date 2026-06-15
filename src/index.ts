@@ -696,6 +696,7 @@ const PANEL_HTML = `<!doctype html>
           <h2>📋 Bot 列表</h2>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" id="setupAllWebhooksBtn">🔗 设置全部 Webhook</button>
+            <button class="btn btn-outline btn-sm" id="checkAllWebhooksBtn">🩺 检测 Webhook</button>
             <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 刷新</button>
           </div>
         </div>
@@ -916,6 +917,19 @@ const PANEL_HTML = `<!doctype html>
       } catch (e) { showToast('批量设置失败：' + e.message, 'error'); }
     }
 
+    async function checkAllWebhooks() {
+      try {
+        const result = await api('GET', '/bots/webhook-status');
+        const failed = result.results.filter(r => !r.ok || !r.matchesExpectedUrl || r.lastErrorMessage);
+        if (failed.length) {
+          console.table(result.results);
+          showToast('检测完成：' + failed.length + ' 个异常，请打开浏览器控制台查看详情', 'error');
+        } else {
+          showToast('全部 Webhook 正常（' + result.total + ' 个）', 'success');
+        }
+      } catch (e) { showToast('检测失败：' + e.message, 'error'); }
+    }
+
     async function deleteBot(id) {
       if (!confirm('确定要删除这个 Bot 吗？')) return;
       try {
@@ -973,6 +987,7 @@ const PANEL_HTML = `<!doctype html>
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('addBotForm').addEventListener('submit', addBot);
     document.getElementById('setupAllWebhooksBtn').addEventListener('click', setupAllWebhooks);
+    document.getElementById('checkAllWebhooksBtn').addEventListener('click', checkAllWebhooks);
     document.getElementById('refreshBtn').addEventListener('click', loadBots);
     document.getElementById('editBotForm').addEventListener('submit', saveEdit);
     document.getElementById('closeEditModal').addEventListener('click', closeEdit);
@@ -1064,6 +1079,56 @@ async function handleApiBotsSetupWebhooks(mgr: BotManager, origin: string) {
   return json({ ok: failed === 0, total: results.length, success, failed, results });
 }
 
+async function handleApiBotsWebhookStatus(mgr: BotManager, origin: string) {
+  const bots = await mgr.list();
+  const results: Array<{
+    id: string;
+    name: string;
+    ok: boolean;
+    active: boolean;
+    expectedUrl: string;
+    actualUrl?: string;
+    matchesExpectedUrl?: boolean;
+    pendingUpdateCount?: number;
+    lastErrorMessage?: string;
+    lastErrorDate?: number;
+    allowedUpdates?: string[];
+    error?: string;
+  }> = [];
+
+  for (const bot of bots) {
+    const expectedUrl = `${origin}/hook/${bot.id}/${bot.webhookSecret}`;
+    try {
+      const info = await new TelegramClient(bot.token).getWebhookInfo();
+      results.push({
+        id: bot.id,
+        name: bot.name,
+        ok: true,
+        active: bot.active,
+        expectedUrl,
+        actualUrl: info.url,
+        matchesExpectedUrl: info.url === expectedUrl,
+        pendingUpdateCount: info.pending_update_count,
+        lastErrorMessage: info.last_error_message,
+        lastErrorDate: info.last_error_date,
+        allowedUpdates: info.allowed_updates,
+      });
+    } catch (error) {
+      results.push({
+        id: bot.id,
+        name: bot.name,
+        ok: false,
+        active: bot.active,
+        expectedUrl,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const healthy = results.filter((r) => r.ok && r.matchesExpectedUrl && !r.lastErrorMessage).length;
+  return json({ ok: healthy === results.length, total: results.length, healthy, results });
+}
+
 // ── Main fetch handler ─────────────────────────────────────────────
 
 export default {
@@ -1105,6 +1170,10 @@ export default {
 
         if (request.method === "GET" && apiPath === "/bots") {
           return handleApiBotsList(mgr);
+        }
+
+        if (request.method === "GET" && apiPath === "/bots/webhook-status") {
+          return handleApiBotsWebhookStatus(mgr, url.origin);
         }
 
         if (request.method === "POST" && apiPath === "/bots") {
@@ -1168,10 +1237,10 @@ export default {
 
 async function handleTelegramUpdate(
   kv: KVNamespace,
-  bot: { token: string; adminGroupId: string },
+  bot: { id: string; token: string; adminGroupId: string },
   request: Request
 ): Promise<Response> {
-  const store = new BotStore(kv);
+  const store = new BotStore(kv, bot.id);
 
   const update = (await request.json()) as TelegramUpdate;
   const message = update.message;

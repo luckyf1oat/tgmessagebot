@@ -23,34 +23,38 @@ export interface MessageLink {
 }
 
 export class BotStore {
-  constructor(private kv: KVNamespace) {}
+  constructor(private kv: KVNamespace, private botId = "default") {}
+
+  private scoped(key: string) {
+    return `bot:${this.botId}:${key}`;
+  }
 
   verifiedKey(userId: number) {
-    return `${VERIFIED_PREFIX}${userId}`;
+    return this.scoped(`${VERIFIED_PREFIX}${userId}`);
   }
 
   captchaKey(userId: number) {
-    return `${CAPTCHA_PREFIX}${userId}`;
+    return this.scoped(`${CAPTCHA_PREFIX}${userId}`);
   }
 
   userThreadKey(userId: number) {
-    return `${USER_THREAD_PREFIX}${userId}`;
+    return this.scoped(`${USER_THREAD_PREFIX}${userId}`);
   }
 
   threadUserKey(threadId: number) {
-    return `${THREAD_USER_PREFIX}${threadId}`;
+    return this.scoped(`${THREAD_USER_PREFIX}${threadId}`);
   }
 
   profileSentKey(userId: number) {
-    return `${PROFILE_SENT_PREFIX}${userId}`;
+    return this.scoped(`${PROFILE_SENT_PREFIX}${userId}`);
   }
 
   blockedKey(userId: number) {
-    return `${BLOCKED_PREFIX}${userId}`;
+    return this.scoped(`${BLOCKED_PREFIX}${userId}`);
   }
 
   messageLinkKey(chatId: number, messageId: number) {
-    return `${MESSAGE_LINK_PREFIX}${chatId}:${messageId}`;
+    return this.scoped(`${MESSAGE_LINK_PREFIX}${chatId}:${messageId}`);
   }
 
   async isVerified(userId: number): Promise<boolean> {
