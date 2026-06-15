@@ -694,7 +694,10 @@ const PANEL_HTML = `<!doctype html>
       <div class="card">
         <div class="card-header">
           <h2>📋 Bot 列表</h2>
-          <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 刷新</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="setupAllWebhooksBtn">🔗 设置全部 Webhook</button>
+            <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 刷新</button>
+          </div>
         </div>
         <div id="botListContainer" class="bot-list"></div>
       </div>
@@ -900,6 +903,19 @@ const PANEL_HTML = `<!doctype html>
       } catch (e) { showToast('Webhook 设置失败：' + e.message, 'error'); }
     }
 
+    async function setupAllWebhooks() {
+      try {
+        const result = await api('POST', '/bots/setup-webhooks');
+        const failed = result.results.filter(r => !r.ok);
+        if (failed.length) {
+          showToast('已设置 ' + result.success + ' 个，失败 ' + failed.length + ' 个', 'error');
+        } else {
+          showToast('全部 Webhook 设置成功（' + result.success + ' 个）', 'success');
+        }
+        loadBots();
+      } catch (e) { showToast('批量设置失败：' + e.message, 'error'); }
+    }
+
     async function deleteBot(id) {
       if (!confirm('确定要删除这个 Bot 吗？')) return;
       try {
@@ -956,6 +972,7 @@ const PANEL_HTML = `<!doctype html>
     document.getElementById('setupPasswordConfirm').addEventListener('keydown', e => { if (e.key === 'Enter') setupPassword(); });
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('addBotForm').addEventListener('submit', addBot);
+    document.getElementById('setupAllWebhooksBtn').addEventListener('click', setupAllWebhooks);
     document.getElementById('refreshBtn').addEventListener('click', loadBots);
     document.getElementById('editBotForm').addEventListener('submit', saveEdit);
     document.getElementById('closeEditModal').addEventListener('click', closeEdit);
@@ -997,9 +1014,7 @@ async function handleApiBotDelete(mgr: BotManager, botId: string) {
   return json({ ok: true });
 }
 
-async function handleApiBotSetupWebhook(mgr: BotManager, botId: string, origin: string) {
-  const bot = await mgr.get(botId);
-  if (!bot) return json({ error: "Bot not found" }, 404);
+async function setupBotWebhook(mgr: BotManager, bot: { id: string; token: string; webhookSecret: string; active: boolean }, origin: string) {
   const tg = new TelegramClient(bot.token);
   const hookUrl = `${origin}/hook/${bot.id}/${bot.webhookSecret}`;
   const result = await tg.call<unknown>("setWebhook", {
@@ -1008,9 +1023,45 @@ async function handleApiBotSetupWebhook(mgr: BotManager, botId: string, origin: 
     allowed_updates: ["message", "edited_message", "callback_query"],
   });
   if (bot.active === false) {
-    await mgr.setActive(botId, true);
+    await mgr.setActive(bot.id, true);
   }
+  return { hookUrl, result };
+}
+
+async function handleApiBotSetupWebhook(mgr: BotManager, botId: string, origin: string) {
+  const bot = await mgr.get(botId);
+  if (!bot) return json({ error: "Bot not found" }, 404);
+  const { hookUrl, result } = await setupBotWebhook(mgr, bot, origin);
   return json({ ok: true, hookUrl, result });
+}
+
+async function handleApiBotsSetupWebhooks(mgr: BotManager, origin: string) {
+  const bots = await mgr.list();
+  const results: Array<{
+    id: string;
+    name: string;
+    ok: boolean;
+    hookUrl?: string;
+    error?: string;
+  }> = [];
+
+  for (const bot of bots) {
+    try {
+      const { hookUrl } = await setupBotWebhook(mgr, bot, origin);
+      results.push({ id: bot.id, name: bot.name, ok: true, hookUrl });
+    } catch (error) {
+      results.push({
+        id: bot.id,
+        name: bot.name,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const success = results.filter((r) => r.ok).length;
+  const failed = results.length - success;
+  return json({ ok: failed === 0, total: results.length, success, failed, results });
 }
 
 // ── Main fetch handler ─────────────────────────────────────────────
@@ -1058,6 +1109,10 @@ export default {
 
         if (request.method === "POST" && apiPath === "/bots") {
           return handleApiBotsAdd(mgr, request);
+        }
+
+        if (request.method === "POST" && apiPath === "/bots/setup-webhooks") {
+          return handleApiBotsSetupWebhooks(mgr, url.origin);
         }
 
         const setupMatch = /^\/bots\/([^/]+)\/setup-webhook$/.exec(apiPath);
