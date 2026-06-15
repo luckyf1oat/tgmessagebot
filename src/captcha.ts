@@ -29,6 +29,22 @@ export class BotStore {
     return `bot:${this.botId}:${key}`;
   }
 
+  private async getWithLegacyFallback(key: string): Promise<string | null> {
+    const scopedKey = this.scoped(key);
+    const scopedValue = await this.kv.get(scopedKey);
+    if (scopedValue !== null) return scopedValue;
+
+    const legacyValue = await this.kv.get(key);
+    if (legacyValue !== null) {
+      await this.kv.put(scopedKey, legacyValue);
+    }
+    return legacyValue;
+  }
+
+  private async deleteBoth(key: string): Promise<void> {
+    await Promise.all([this.kv.delete(this.scoped(key)), this.kv.delete(key)]);
+  }
+
   verifiedKey(userId: number) {
     return this.scoped(`${VERIFIED_PREFIX}${userId}`);
   }
@@ -58,7 +74,7 @@ export class BotStore {
   }
 
   async isVerified(userId: number): Promise<boolean> {
-    const value = await this.kv.get(this.verifiedKey(userId));
+    const value = await this.getWithLegacyFallback(`${VERIFIED_PREFIX}${userId}`);
     return value === "1";
   }
 
@@ -67,7 +83,7 @@ export class BotStore {
   }
 
   async clearCaptcha(userId: number): Promise<void> {
-    await this.kv.delete(this.captchaKey(userId));
+    await this.deleteBoth(`${CAPTCHA_PREFIX}${userId}`);
   }
 
   async saveCaptcha(userId: number, answer: number, ttlSec: number): Promise<void> {
@@ -81,7 +97,7 @@ export class BotStore {
   }
 
   async getCaptcha(userId: number): Promise<CaptchaState | null> {
-    const raw = await this.kv.get(this.captchaKey(userId));
+    const raw = await this.getWithLegacyFallback(`${CAPTCHA_PREFIX}${userId}`);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as CaptchaState;
@@ -91,14 +107,14 @@ export class BotStore {
   }
 
   async getThreadIdByUser(userId: number): Promise<number | null> {
-    const raw = await this.kv.get(this.userThreadKey(userId));
+    const raw = await this.getWithLegacyFallback(`${USER_THREAD_PREFIX}${userId}`);
     if (!raw) return null;
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   }
 
   async getUserIdByThread(threadId: number): Promise<number | null> {
-    const raw = await this.kv.get(this.threadUserKey(threadId));
+    const raw = await this.getWithLegacyFallback(`${THREAD_USER_PREFIX}${threadId}`);
     if (!raw) return null;
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
@@ -113,14 +129,14 @@ export class BotStore {
 
   async clearUserThread(userId: number, threadId: number): Promise<void> {
     await Promise.all([
-      this.kv.delete(this.userThreadKey(userId)),
-      this.kv.delete(this.threadUserKey(threadId)),
-      this.kv.delete(this.profileSentKey(userId))
+      this.deleteBoth(`${USER_THREAD_PREFIX}${userId}`),
+      this.deleteBoth(`${THREAD_USER_PREFIX}${threadId}`),
+      this.deleteBoth(`${PROFILE_SENT_PREFIX}${userId}`)
     ]);
   }
 
   async isProfileSent(userId: number): Promise<boolean> {
-    const v = await this.kv.get(this.profileSentKey(userId));
+    const v = await this.getWithLegacyFallback(`${PROFILE_SENT_PREFIX}${userId}`);
     return v === "1";
   }
 
@@ -129,7 +145,7 @@ export class BotStore {
   }
 
   async isBlocked(userId: number): Promise<boolean> {
-    const v = await this.kv.get(this.blockedKey(userId));
+    const v = await this.getWithLegacyFallback(`${BLOCKED_PREFIX}${userId}`);
     return v === "1";
   }
 
@@ -138,7 +154,7 @@ export class BotStore {
       await this.kv.put(this.blockedKey(userId), "1");
       return;
     }
-    await this.kv.delete(this.blockedKey(userId));
+    await this.deleteBoth(`${BLOCKED_PREFIX}${userId}`);
   }
 
   async bindMessageLink(from: MessageLink, to: MessageLink): Promise<void> {
@@ -149,7 +165,7 @@ export class BotStore {
   }
 
   async getLinkedMessage(chatId: number, messageId: number): Promise<MessageLink | null> {
-    const raw = await this.kv.get(this.messageLinkKey(chatId, messageId));
+    const raw = await this.getWithLegacyFallback(`${MESSAGE_LINK_PREFIX}${chatId}:${messageId}`);
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as MessageLink;
