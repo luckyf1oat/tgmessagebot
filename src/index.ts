@@ -194,10 +194,13 @@ async function askEmojiCaptcha(tg: TelegramClient, store: BotStore, userId: numb
   const challenge = createEmojiChallenge();
   await store.setCaptchaStage(userId, "emoji");
   await store.saveEmojiCaptcha(userId, challenge.correctEmoji, CAPTCHA_TTL_SECONDS);
+
+  const correctIndex = challenge.options.indexOf(challenge.correctEmoji) + 1; // 1-based
   const optionsText = challenge.options.join("  ");
+
   await tg.sendMessage(
     userId,
-    `🔐 第二轮验证：请发送以下正确的 emoji\n\n${optionsText}`
+    `🔐 第二轮验证：请发送第 ${correctIndex} 个 emoji\n\n${optionsText}`
   );
 }
 
