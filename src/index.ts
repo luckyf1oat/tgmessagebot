@@ -1,4 +1,4 @@
-import { BotStore, createCaptcha, parseAnswer } from "./captcha";
+import { BotStore, createCaptcha, parseAnswer, createEmojiChallenge, parseEmojiAnswer } from "./captcha";
 import { BotManager } from "./bot-manager";
 import {
   TelegramCallbackQuery,
@@ -182,10 +182,22 @@ async function ensureThreadForUser(
 
 async function askCaptcha(tg: TelegramClient, store: BotStore, userId: number) {
   const challenge = createCaptcha();
+  await store.setCaptchaStage(userId, "math");
   await store.saveCaptcha(userId, challenge.answer, CAPTCHA_TTL_SECONDS);
   await tg.sendMessage(
     userId,
-    `请先完成验证：${challenge.a} + ${challenge.b} = ?\n直接回复数字即可。`
+    `🔐 第一轮验证：${challenge.a} + ${challenge.b} = ?\n直接回复数字即可。`
+  );
+}
+
+async function askEmojiCaptcha(tg: TelegramClient, store: BotStore, userId: number) {
+  const challenge = createEmojiChallenge();
+  await store.setCaptchaStage(userId, "emoji");
+  await store.saveEmojiCaptcha(userId, challenge.correctEmoji, CAPTCHA_TTL_SECONDS);
+  const optionsText = challenge.options.join("  ");
+  await tg.sendMessage(
+    userId,
+    `🔐 第二轮验证：请发送以下正确的 emoji\n\n${optionsText}`
   );
 }
 
@@ -218,28 +230,67 @@ async function handlePrivateMessage(
 
   const verified = await store.isVerified(user.id);
   if (!verified) {
-    const captcha = await store.getCaptcha(user.id);
-    if (!captcha || captcha.expiresAt < Date.now()) {
+    const stage = await store.getCaptchaStage(user.id);
+
+    // ── No captcha in progress → start first round ──
+    if (!stage) {
       await askCaptcha(tg, store, user.id);
       return;
     }
 
-    const answer = parseAnswer(message.text);
-    if (answer === null) {
-      await tg.sendMessage(user.id, "请回复数字答案，例如 8。");
+    // ── Stage 1: math captcha ──
+    if (stage === "math") {
+      const captcha = await store.getCaptcha(user.id);
+      if (!captcha || captcha.expiresAt < Date.now()) {
+        await askCaptcha(tg, store, user.id);
+        return;
+      }
+
+      const answer = parseAnswer(message.text);
+      if (answer === null) {
+        await tg.sendMessage(user.id, "请回复数字答案，例如 8。");
+        return;
+      }
+
+      if (answer !== captcha.answer) {
+        await tg.sendMessage(user.id, "❌ 答案不正确，请重试。");
+        await askCaptcha(tg, store, user.id);
+        return;
+      }
+
+      // Math passed → clear math captcha, move to emoji round
+      await store.clearCaptcha(user.id);
+      await tg.sendMessage(user.id, "✅ 第一轮验证通过！");
+      await askEmojiCaptcha(tg, store, user.id);
       return;
     }
 
-    if (answer !== captcha.answer) {
-      await tg.sendMessage(user.id, "答案不正确，重新来一题。");
-      await askCaptcha(tg, store, user.id);
+    // ── Stage 2: emoji captcha ──
+    if (stage === "emoji") {
+      const emojiCaptcha = await store.getEmojiCaptcha(user.id);
+      if (!emojiCaptcha || emojiCaptcha.expiresAt < Date.now()) {
+        await askEmojiCaptcha(tg, store, user.id);
+        return;
+      }
+
+      const emojiAnswer = parseEmojiAnswer(message.text);
+      if (!emojiAnswer) {
+        await tg.sendMessage(user.id, "请发送一个 emoji。");
+        return;
+      }
+
+      if (emojiAnswer !== emojiCaptcha.correctEmoji) {
+        await tg.sendMessage(user.id, "❌ 答案不正确，请重试。");
+        await askEmojiCaptcha(tg, store, user.id);
+        return;
+      }
+
+      // Both rounds passed → verified!
+      await store.setVerified(user.id);
+      await store.clearCaptcha(user.id);
+      await tg.sendMessage(user.id, "✅ 验证通过！现在可以开始发送消息。");
       return;
     }
-
-    await store.setVerified(user.id);
-    await store.clearCaptcha(user.id);
-    await tg.sendMessage(user.id, "✅ 验证通过！现在可以开始发送消息。");
-    return;
   }
 
   const threadId = await ensureThreadForUser(tg, store, adminGroupId, user);

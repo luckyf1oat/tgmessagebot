@@ -9,8 +9,22 @@ interface CaptchaState {
   expiresAt: number;
 }
 
+export interface EmojiChallenge {
+  correctEmoji: string;
+  options: string[];
+}
+
+interface EmojiState {
+  correctEmoji: string;
+  expiresAt: number;
+}
+
+export type CaptchaStage = "math" | "emoji";
+
 const VERIFIED_PREFIX = "verified:";
 const CAPTCHA_PREFIX = "captcha:";
+const CAPTCHA_EMOJI_PREFIX = "captcha_emoji:";
+const CAPTCHA_STAGE_PREFIX = "captcha_stage:";
 const USER_THREAD_PREFIX = "user_thread:";
 const THREAD_USER_PREFIX = "thread_user:";
 const PROFILE_SENT_PREFIX = "profile_sent:";
@@ -35,6 +49,14 @@ export class BotStore {
 
   captchaKey(userId: number) {
     return this.scoped(`${CAPTCHA_PREFIX}${userId}`);
+  }
+
+  captchaEmojiKey(userId: number) {
+    return this.scoped(`${CAPTCHA_EMOJI_PREFIX}${userId}`);
+  }
+
+  captchaStageKey(userId: number) {
+    return this.scoped(`${CAPTCHA_STAGE_PREFIX}${userId}`);
   }
 
   userThreadKey(userId: number) {
@@ -67,8 +89,14 @@ export class BotStore {
   }
 
   async clearCaptcha(userId: number): Promise<void> {
-    await this.kv.delete(this.captchaKey(userId));
+    await Promise.all([
+      this.kv.delete(this.captchaKey(userId)),
+      this.kv.delete(this.captchaEmojiKey(userId)),
+      this.kv.delete(this.captchaStageKey(userId)),
+    ]);
   }
+
+  // ── Math captcha ──
 
   async saveCaptcha(userId: number, answer: number, ttlSec: number): Promise<void> {
     const payload: CaptchaState = {
@@ -88,6 +116,40 @@ export class BotStore {
     } catch {
       return null;
     }
+  }
+
+  // ── Emoji captcha ──
+
+  async saveEmojiCaptcha(userId: number, correctEmoji: string, ttlSec: number): Promise<void> {
+    const payload: EmojiState = {
+      correctEmoji,
+      expiresAt: Date.now() + ttlSec * 1000
+    };
+    await this.kv.put(this.captchaEmojiKey(userId), JSON.stringify(payload), {
+      expirationTtl: ttlSec
+    });
+  }
+
+  async getEmojiCaptcha(userId: number): Promise<EmojiState | null> {
+    const raw = await this.kv.get(this.captchaEmojiKey(userId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as EmojiState;
+    } catch {
+      return null;
+    }
+  }
+
+  // ── Captcha stage ──
+
+  async setCaptchaStage(userId: number, stage: CaptchaStage): Promise<void> {
+    await this.kv.put(this.captchaStageKey(userId), stage);
+  }
+
+  async getCaptchaStage(userId: number): Promise<CaptchaStage | null> {
+    const raw = await this.kv.get(this.captchaStageKey(userId));
+    if (raw === "math" || raw === "emoji") return raw;
+    return null;
   }
 
   async getThreadIdByUser(userId: number): Promise<number | null> {
@@ -173,4 +235,22 @@ export function parseAnswer(text?: string): number | null {
   if (!/^[-+]?\d+$/.test(trimmed)) return null;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
+}
+
+// ── Emoji captcha ──
+
+const EMOJI_POOL = ["😀", "😂", "🥰", "😎", "🤖", "🐱", "🐶", "🦊", "🐼", "🐨", "🐸", "🦄", "🐙", "🌸", "🍕", "🎸", "🚀", "⭐", "🔥", "💡"];
+
+export function createEmojiChallenge(): EmojiChallenge {
+  const shuffled = [...EMOJI_POOL].sort(() => Math.random() - 0.5);
+  const options = shuffled.slice(0, 5);
+  const correctEmoji = options[Math.floor(Math.random() * options.length)];
+  return { correctEmoji, options };
+}
+
+export function parseEmojiAnswer(text?: string): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return trimmed;
 }
